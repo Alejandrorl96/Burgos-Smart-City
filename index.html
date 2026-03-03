@@ -12,17 +12,63 @@
     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
     crossorigin=""
   />
-
   <link rel="stylesheet" href="assets/style.css" />
 </head>
+
 <body>
+  <div class="app">
+    <!-- Topbar -->
+    <header class="topbar">
+      <div class="brand">
+        <div class="logo" aria-hidden="true"></div>
+        <div class="brand-text">
+          <h1>Mapa de Proyectos</h1>
+          <p>Burgos · Pincha en un punto o busca un proyecto</p>
+        </div>
+      </div>
 
-  <header class="topbar">
-    <h1>Mapa de Proyectos – Burgos</h1>
-    <p>Pincha en una chincheta para ver el proyecto. Haz clic en el mapa para obtener coordenadas (F12 → Consola).</p>
-  </header>
+      <div class="topbar-actions">
+        <button id="btnLocate" class="btn btn-ghost" type="button" title="Centrar en Burgos">
+          Centrar
+        </button>
+        <button id="btnTogglePanel" class="btn btn-primary" type="button" title="Mostrar/ocultar panel">
+          Panel
+        </button>
+      </div>
+    </header>
 
-  <div id="map"></div>
+    <!-- Main layout -->
+    <main class="layout">
+      <!-- Sidebar -->
+      <aside id="sidebar" class="sidebar">
+        <div class="sidebar-head">
+          <h2>Proyectos</h2>
+          <span id="countBadge" class="badge">0</span>
+        </div>
+
+        <div class="search">
+          <input id="searchInput" type="search" placeholder="Buscar por título o palabra clave…" />
+        </div>
+
+        <div class="hint">
+          Consejo: haz clic en el mapa para copiar coordenadas (F12 → Consola).
+        </div>
+
+        <div id="list" class="list" aria-label="Listado de proyectos"></div>
+
+        <div class="sidebar-foot">
+          <div class="foot-note">
+            Datos: enlaces del proyecto · Mapa: OpenStreetMap
+          </div>
+        </div>
+      </aside>
+
+      <!-- Map -->
+      <section class="map-wrap">
+        <div id="map"></div>
+      </section>
+    </main>
+  </div>
 
   <!-- Leaflet JS -->
   <script
@@ -31,8 +77,6 @@
     crossorigin=""
   ></script>
 
-  <!-- Tu JS -->
   <script src="assets/app.js"></script>
-
 </body>
 </html>
