@@ -1,16 +1,23 @@
-// ======== Config ========
+// ==============================
+// Config
+// ==============================
 const centroBurgos = [42.34399, -3.69691];
 const zoomInicial = 13;
 
-// ======== UI refs ========
-const sidebar = document.getElementById("sidebar");
+// UI
+const panel = document.getElementById("panel");
 const btnTogglePanel = document.getElementById("btnTogglePanel");
-const btnLocate = document.getElementById("btnLocate");
+const btnClosePanel = document.getElementById("btnClosePanel");
+const btnCenter = document.getElementById("btnCenter");
 const searchInput = document.getElementById("searchInput");
+const searchHint = document.getElementById("searchHint");
 const listEl = document.getElementById("list");
-const countBadge = document.getElementById("countBadge");
+const countPill = document.getElementById("countPill");
+const statusCount = document.getElementById("statusCount");
 
-// ======== Mapa ========
+// ==============================
+// Map init
+// ==============================
 const map = L.map("map", { zoomControl: true }).setView(centroBurgos, zoomInicial);
 
 L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -18,13 +25,18 @@ L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
   attribution: "&copy; OpenStreetMap contributors",
 }).addTo(map);
 
-// ======== Estado ========
-let features = [];                  // features del GeoJSON
-const markerById = new Map();       // id -> marker
-const cardById = new Map();         // id -> card element
+// ==============================
+// State
+// ==============================
+let allFeatures = [];
 let activeId = null;
 
-// ======== Helpers ========
+const markerById = new Map();
+const cardById = new Map();
+
+// ==============================
+// Helpers
+// ==============================
 function escapeHtml(str = "") {
   return String(str)
     .replaceAll("&", "&amp;")
@@ -32,6 +44,48 @@ function escapeHtml(str = "") {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function makeId(feature) {
+  const p = feature.properties || {};
+  if (p.id) return String(p.id);
+  if (p.titulo) return String(p.titulo).toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\-]/g, "");
+  return "p-" + Math.random().toString(16).slice(2);
+}
+
+// ===== Paleta de alto contraste (tipo “neón”) =====
+const palette = [
+  "#00E5FF", // cian
+  "#FF1744", // rojo
+  "#FFEA00", // amarillo
+  "#00E676", // verde
+  "#7C4DFF", // violeta
+  "#FF9100", // naranja
+  "#1DE9B6", // turquesa
+  "#FF4081", // rosa
+  "#76FF03", // lima
+  "#2979FF", // azul
+  "#F500FF", // magenta
+  "#FFD600"  // dorado
+];
+
+function colorForIndex(i) {
+  if (i < palette.length) return palette[i];
+  const hue = (i * 137.508) % 360;
+  return `hsl(${hue} 95% 55%)`;
+}
+
+// ===== Pin tipo gota invertida =====
+function pinIcon(color) {
+  return L.divIcon({
+    className: "",
+    html: `<div class="pin-drop" style="--pin:${color}"></div>`,
+    // El divIcon necesita un tamaño/ancla coherente:
+    iconSize: [26, 26],
+    // El “pico” está abajo (tras rotar -45º), anclamos aprox ahí
+    iconAnchor: [13, 26],
+    popupAnchor: [0, -24],
+  });
 }
 
 function setActive(id) {
@@ -47,34 +101,37 @@ function openProject(id) {
   setActive(id);
   map.setView(marker.getLatLng(), Math.max(map.getZoom(), 15), { animate: true });
   marker.openPopup();
-
-  // En móvil, cerramos panel tras seleccionar
-  if (window.matchMedia("(max-width: 980px)").matches) {
-    sidebar.classList.remove("open");
-  }
 }
 
-function renderList(filtered) {
+function renderList(features) {
   listEl.innerHTML = "";
-  countBadge.textContent = filtered.length;
+  cardById.clear();
 
-  filtered.forEach((f) => {
+  countPill.textContent = String(features.length);
+  statusCount.textContent = String(allFeatures.length);
+
+  features.forEach((f) => {
     const p = f.properties || {};
-    const id = p.id || p.titulo; // fallback (pero mejor usar id en GeoJSON)
+    const id = p._id;
     const titulo = p.titulo || "Proyecto";
     const desc = p.descripcion || "";
     const url = p.url || "";
+    const cat = p.categoria || "Proyecto";
+    const color = p._color || "#00E5FF";
 
     const card = document.createElement("div");
     card.className = "card";
     card.tabIndex = 0;
 
     card.innerHTML = `
-      <h3>${escapeHtml(titulo)}</h3>
+      <h3>
+        <span class="dot" style="--dot:${escapeHtml(color)}"></span>
+        ${escapeHtml(titulo)}
+      </h3>
       ${desc ? `<p>${escapeHtml(desc)}</p>` : ""}
       <div class="meta">
-        <span class="pill">${escapeHtml(p.categoria || "Proyecto")}</span>
-        ${url ? `<a class="link" href="${escapeHtml(url)}" target="_blank" rel="noopener">Abrir</a>` : ""}
+        <span class="tag">${escapeHtml(cat)}</span>
+        ${url ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener">Abrir</a>` : ""}
       </div>
     `;
 
@@ -86,43 +143,55 @@ function renderList(filtered) {
     listEl.appendChild(card);
     cardById.set(id, card);
   });
+
+  if (activeId && cardById.get(activeId)) cardById.get(activeId).classList.add("active");
 }
 
 function applySearch() {
   const q = (searchInput.value || "").trim().toLowerCase();
   if (!q) {
-    renderList(features);
+    searchHint.textContent = "";
+    renderList(allFeatures);
     return;
   }
-  const filtered = features.filter((f) => {
+
+  const filtered = allFeatures.filter((f) => {
     const p = f.properties || {};
     const hay = `${p.titulo || ""} ${p.descripcion || ""} ${p.categoria || ""}`.toLowerCase();
     return hay.includes(q);
   });
+
+  searchHint.textContent = `${filtered.length} resultado(s)`;
   renderList(filtered);
 }
 
-// ======== Cargar GeoJSON ========
+// ==============================
+// Load GeoJSON points
+// ==============================
 fetch("data/proyectos.geojson")
   .then((r) => {
     if (!r.ok) throw new Error(`No se pudo cargar data/proyectos.geojson (HTTP ${r.status})`);
     return r.json();
   })
   .then((geojson) => {
-    features = (geojson.features || []).map((f) => {
-      const p = f.properties || {};
-      // Recomendación: usar un id estable
-      if (!p.id) p.id = p.titulo || crypto.randomUUID();
-      f.properties = p;
-      return f;
+    (geojson.features || []).forEach((f, i) => {
+      if (!f.properties) f.properties = {};
+      f.properties._id = makeId(f);
+      // Si defines "color" en GeoJSON, se respeta; si no, se asigna por índice
+      f.properties._color = f.properties.color || colorForIndex(i);
     });
 
-    // Capa de marcadores
+    allFeatures = (geojson.features || []);
+
     const capa = L.geoJSON(geojson, {
-      pointToLayer: (feature, latlng) => L.marker(latlng),
+      pointToLayer: (feature, latlng) => {
+        const p = feature.properties || {};
+        const color = p._color || "#00E5FF";
+        return L.marker(latlng, { icon: pinIcon(color) });
+      },
       onEachFeature: (feature, layer) => {
         const p = feature.properties || {};
-        const id = p.id;
+        const id = p._id;
 
         const titulo = p.titulo || "Proyecto";
         const desc = p.descripcion ? `<p>${escapeHtml(p.descripcion)}</p>` : "";
@@ -133,38 +202,42 @@ fetch("data/proyectos.geojson")
         layer.bindPopup(`<h3>${escapeHtml(titulo)}</h3>${desc}${url}`);
 
         markerById.set(id, layer);
-
-        layer.on("click", () => {
-          setActive(id);
-        });
+        layer.on("click", () => setActive(id));
       },
     }).addTo(map);
 
-    // Ajustar vista a todos los puntos
     const bounds = capa.getBounds();
-    if (bounds.isValid()) map.fitBounds(bounds.pad(0.2));
+    if (bounds.isValid()) map.fitBounds(bounds.pad(0.18));
 
-    // Pintar listado inicial
-    renderList(features);
+    countPill.textContent = String(allFeatures.length);
+    statusCount.textContent = String(allFeatures.length);
+    renderList(allFeatures);
   })
   .catch((err) => {
     console.error(err);
-    alert("Error cargando las chinchetas. Revisa la consola (F12).");
+    alert("Error cargando chinchetas. Revisa consola (F12).");
   });
 
-// ======== UX extra: coordenadas ========
+// ==============================
+// Map click → coords (debug)
+// ==============================
 map.on("click", (e) => {
   console.log("Coordenadas (lat, lon):", e.latlng.lat, e.latlng.lng);
 });
 
-// ======== Botones ========
-btnLocate.addEventListener("click", () => {
+// ==============================
+// UI actions
+// ==============================
+btnCenter.addEventListener("click", () => {
   map.setView(centroBurgos, zoomInicial, { animate: true });
 });
 
 btnTogglePanel.addEventListener("click", () => {
-  sidebar.classList.toggle("open");
+  panel.classList.toggle("closed");
 });
 
-// ======== Buscador ========
+btnClosePanel.addEventListener("click", () => {
+  panel.classList.add("closed");
+});
+
 searchInput.addEventListener("input", applySearch);
